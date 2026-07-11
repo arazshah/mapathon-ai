@@ -6,11 +6,14 @@ COPY package.json package-lock.json ./
 
 RUN node --version \
     && npm --version \
+    && npm config set registry https://mirror.abrha.net/repository/npm/ \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-factor 2 \
     && npm config set fetch-retry-mintimeout 10000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci --no-audit --no-fund
+    && npm config get registry \
+    && npm ping --registry=https://mirror.abrha.net/repository/npm/ \
+    && npm ci --include-workspace-root --no-audit --no-fund
 
 COPY . .
 
