@@ -8,8 +8,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    expose:
+      - "8000"
     restart: unless-stopped
     healthcheck:
       test:
@@ -17,11 +17,11 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=4)"
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5)"
         ]
       interval: 20s
       timeout: 5s
-      start_period: 25s
+      start_period: 30s
       retries: 5
     networks:
       - mapathon-network
@@ -32,9 +32,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: "${VITE_API_URL:-http://localhost:8000}"
-    ports:
-      - "${FRONTEND_PORT:-8080}:80"
+        VITE_API_URL: "${VITE_API_URL:-https://api.mapathon.ir}"
+    expose:
+      - "80"
     restart: unless-stopped
     depends_on:
       backend:
@@ -51,8 +51,8 @@ services:
         ]
       interval: 20s
       timeout: 5s
-      start_period: 10s
-      retries: 3
+      start_period: 15s
+      retries: 5
     networks:
       - mapathon-network
 
