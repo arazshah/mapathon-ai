@@ -1,0 +1,17 @@
+fastapi<1,>=0.115
+uvicorn[standard]<1,>=0.34
+pydantic<3,>=2.10
+pydantic-settings<3,>=2.7
+pydantic-ai<2,>=1
+httpx<1,>=0.28
+python-dotenv<2,>=1.0
+orjson<4,>=3.10
+tenacity<10,>=9
+polyline<3,>=2.0
+
+[dev]
+pytest<9,>=8
+pytest-asyncio<1,>=0.25
+pytest-httpx<1,>=0.35
+ruff<1,>=0.9
+mypy<2,>=1.14
