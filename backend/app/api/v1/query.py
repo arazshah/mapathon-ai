@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,6 +35,11 @@ async def query_mapathon(
         Depends(get_routing_application_service),
     ],
 ) -> QueryResponse:
+    started_at = time.perf_counter()
+    logger.info(
+        "query_started query=%r",
+        payload.query[:200],
+    )
     if not settings.openai_api_key:
         raise HTTPException(
             status_code=503,
@@ -73,7 +79,11 @@ Context کاربر:
             deps=dependencies,
         )
     except Exception as exc:
-        logger.exception("Mapathon agent failed")
+        logger.exception(
+            "mapathon_agent_failed duration=%.2fs query=%r",
+            time.perf_counter() - started_at,
+            payload.query[:200],
+        )
 
         raise HTTPException(
             status_code=502,
@@ -82,6 +92,13 @@ Context کاربر:
                 "اتصال AvalAI، نشان و تنظیمات مدل را بررسی کنید."
             ),
         ) from exc
+    
+    logger.info(
+        "query_agent_finished duration=%.2fs tools=%s tool_results=%d",
+        time.perf_counter() - started_at,
+        dependencies.tools_used,
+        len(dependencies.tool_results),
+    )
 
     if dependencies.tool_results:
         merged = merge_tool_results(
@@ -103,6 +120,12 @@ Context کاربر:
     if not settings.include_agent_debug:
         response.debug = None
 
+    logger.info(
+        "query_finished duration=%.2fs operation=%s",
+        time.perf_counter() - started_at,
+        response.operation,
+    )
+    
     return response
 
 

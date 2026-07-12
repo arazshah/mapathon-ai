@@ -4,6 +4,7 @@ import {
   FormEvent,
   KeyboardEvent,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -115,6 +116,8 @@ function formatDuration(
 }
 
 export default function MapWorkspace() {
+  const requestControllerRef =
+    useRef<AbortController | null>(null);
   const [query, setQuery] = useState("");
   const [result, setResult] =
     useState<QueryResponse | null>(null);
@@ -157,11 +160,16 @@ export default function MapWorkspace() {
     setLoading(true);
     setError(null);
     setSelectedPlace(null);
+    requestControllerRef.current?.abort();
+
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
 
     try {
       const response = await fetch(
         `${apiBase}/api/v1/query`,
         {
+          signal: controller.signal,
           method: "POST",
           headers: {
             "Content-Type":
@@ -216,6 +224,13 @@ export default function MapWorkspace() {
         );
       }
     } catch (requestError) {
+      if (
+        requestError instanceof DOMException &&
+        requestError.name === "AbortError"
+      ) {
+        return;
+      }
+
       const message =
         requestError instanceof Error
           ? requestError.message

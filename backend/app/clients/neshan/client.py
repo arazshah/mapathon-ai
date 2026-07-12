@@ -54,8 +54,8 @@ class NeshanClient:
         retry=retry_if_exception_type(
             (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError)
         ),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=0.4, min=0.4, max=3),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=0.3, min=0.3, max=2),
         reraise=True,
     )
     async def request(

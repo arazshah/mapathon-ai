@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     neshan_api_key: str = ""
     neshan_base_url: str = "https://api.neshan.org"
-    neshan_timeout_seconds: float = Field(default=30, ge=1, le=120)
+    neshan_timeout_seconds: float = Field(default=15, ge=1, le=120)
 
     neshan_search_path: str = "/v1/search"
     neshan_geocoding_path: str = "/v4/geocoding"
