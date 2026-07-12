@@ -188,6 +188,16 @@ async def route_between_places(
     """
     Geocode two Iranian place names or addresses and calculate a route.
 
+    Use this tool whenever the origin or destination is written as a
+    place name, street, address, landmark, neighborhood, or city in
+    the user's query.
+
+    This tool must also be used when the user describes their current
+    location in text, for example:
+    «من در خیابان دانشکده کنار ترک مال ارومیه هستم».
+
+    Preserve the city in ambiguous addresses.
+
     Args:
         origin_address: Origin place name or complete address.
         destination_address: Destination place name or complete address.
@@ -254,8 +264,18 @@ async def route_from_user_location(
     """
     Calculate a route from context.user_location to an Iranian destination.
 
-    Use this tool when the user says phrases such as:
-    «از موقعیت من»، «از اینجا»، «از مکان فعلی من» or «نزدیک من».
+    Use this tool only when:
+    - the user has not provided a textual origin; and
+    - context.user_location is available.
+
+    Do not use this tool when the user has written their current
+    address, street, landmark, neighborhood, or city in the query.
+    In that case use route_between_places.
+
+    Examples for this tool:
+    «از موقعیت فعلی من به میدان ونک برو»
+    «از اینجا به فرودگاه امام خمینی مسیر بده»
+    when no textual origin is included in the query.
 
     Args:
         destination_address: Destination place name or complete address.
