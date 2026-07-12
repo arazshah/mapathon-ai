@@ -34,8 +34,6 @@ async def lifespan(app: FastAPI):
     )
 
 
-from app.core.rate_limit import InMemoryRateLimitMiddleware
-
 app = FastAPI(
     title=settings.app_name,
     version="0.2.0",
@@ -47,14 +45,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
-)
-
-app.add_middleware(
-    InMemoryRateLimitMiddleware,
-    limit=settings.rate_limit_requests,
-    window_seconds=settings.rate_limit_window_seconds,
-    protected_path=f"{settings.api_v1_prefix}/query",
-    enabled=settings.rate_limit_enabled,
 )
 
 app.add_middleware(
