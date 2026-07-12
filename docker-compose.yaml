@@ -32,7 +32,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: "${VITE_API_URL:-https://api.mapathon.ir}"
+        VITE_API_URL: "https://api.mapathon.ir"
     expose:
       - "80"
     restart: unless-stopped
