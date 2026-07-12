@@ -1,5 +1,4 @@
 from __future__ import annotations
-import re
 
 from typing import Literal
 
@@ -207,16 +206,6 @@ async def route_between_places(
         avoid_traffic_zone: Avoid traffic restriction zones.
         avoid_odd_even_zone: Avoid odd-even restriction zones.
     """
-    # اگر کاربر صریحاً از موقعیت GPS موجود در Context درخواست کرده
-    # و مبدأ متنی نداده است، این ابزار نباید اجرا شود.
-    if (
-        ctx.deps.context.user_location is not None
-        and _query_is_gps_origin_request(ctx.deps.original_query)
-    ):
-        return _ignored_tool_result(
-            "برای این پرسش باید از route_from_user_location استفاده شود."
-        )
-
     origin_result = await ctx.deps.places.geocode(origin_address)
     destination_result = await ctx.deps.places.geocode(
         destination_address
@@ -295,14 +284,6 @@ async def route_from_user_location(
         avoid_traffic_zone: Avoid traffic restriction zones.
         avoid_odd_even_zone: Avoid odd-even restriction zones.
     """
-    # اگر کاربر مبدأ را به‌صورت متنی نوشته است، مبدأ متنی
-    # بر مختصات Context اولویت دارد و باید route_between_places اجرا شود.
-    if _query_has_textual_origin(ctx.deps.original_query):
-        return _ignored_tool_result(
-            "مبدأ در متن پرسش مشخص شده است؛ "
-            "باید از route_between_places استفاده شود."
-        )
-
     origin = ctx.deps.context.user_location
 
     if origin is None:
@@ -365,50 +346,6 @@ async def route_from_user_location(
 
 
 
-async def search_places_along_route_for_dependencies(
-    deps: AgentDependencies,
-    term: str,
-    radius_meters: int = 500,
-    limit: int = 10,
-) -> dict:
-    """Run along-route search directly for a compound request."""
-
-    route_coordinates = deps.route_coordinates()
-
-    if len(route_coordinates) < 2:
-        result = _clarification_result(
-            message=(
-                "برای جستجو در مسیر، ابتدا باید یک مسیر معتبر "
-                "محاسبه شود."
-            ),
-            question=(
-                "لطفاً مبدأ و مقصد را مشخص کنید تا ابتدا مسیر "
-                "محاسبه شود."
-            ),
-        )
-
-        deps.record_tool(
-            tool_name="search_places_along_route",
-            result=result,
-        )
-
-        return result
-
-    result = await deps.places.search_along_route(
-        term=term,
-        route_coordinates=route_coordinates,
-        radius_meters=max(100, min(radius_meters, 3000)),
-        limit=max(1, min(limit, 30)),
-    )
-
-    deps.record_tool(
-        tool_name="search_places_along_route",
-        result=result,
-    )
-
-    return result
-
-
 @map_agent.tool
 async def search_places_along_route(
     ctx: RunContext[AgentDependencies],
@@ -430,15 +367,6 @@ async def search_places_along_route(
         radius_meters: Maximum distance from route, from 100 to 3000.
         limit: Maximum number of results, from 1 to 30.
     """
-    # جستجو در مسیر فقط وقتی مجاز است که کاربر صریحاً
-    # مکان موردنظر را در مسیر خواسته باشد.
-    if not _query_explicitly_requests_places_along_route(
-        ctx.deps.original_query
-    ):
-        return _ignored_tool_result(
-            "کاربر جستجوی مکان در مسیر درخواست نکرده است."
-        )
-
     route_coordinates = ctx.deps.route_coordinates()
 
     if len(route_coordinates) < 2:
@@ -460,111 +388,19 @@ async def search_places_along_route(
 
         return result
 
-    return await search_places_along_route_for_dependencies(
-        deps=ctx.deps,
+    result = await ctx.deps.places.search_along_route(
         term=term,
-        radius_meters=radius_meters,
-        limit=limit,
+        route_coordinates=route_coordinates,
+        radius_meters=max(100, min(radius_meters, 3000)),
+        limit=max(1, min(limit, 30)),
     )
 
-
-def _query_has_textual_origin(query: str) -> bool:
-    """Return True when the query contains an explicit textual origin."""
-
-    normalized = " ".join((query or "").split())
-
-    # ارجاع صرف به GPS یا موقعیت ذخیره‌شده، مبدأ متنی محسوب نمی‌شود.
-    gps_only_phrases = (
-        "از موقعیت فعلی من",
-        "از موقعیت من",
-        "از مکان فعلی من",
-        "از اینجا",
-        "نزدیک من",
-        "اطراف من",
+    ctx.deps.record_tool(
+        tool_name="search_places_along_route",
+        result=result,
     )
 
-    if any(phrase in normalized for phrase in gps_only_phrases):
-        # اگر علاوه بر عبارت GPS، نشانی واقعی هم آمده باشد،
-        # مبدأ متنی همچنان اولویت دارد.
-        textual_patterns = (
-            r"من\s+در\s+",
-            r"در\s+[^،,.]+(?:هستم|ایستاده‌ام|ایستاده ام|قرار دارم)",
-            r"کنار\s+[^،,.]+(?:هستم|ایستاده‌ام|ایستاده ام)",
-            r"مبدأ(?:\s+مسیر)?\s*[:：]?",
-        )
-        return any(
-            re.search(pattern, normalized)
-            for pattern in textual_patterns
-        )
-
-    textual_patterns = (
-        r"من\s+در\s+",
-        r"در\s+[^،,.]+(?:هستم|ایستاده‌ام|ایستاده ام|قرار دارم)",
-        r"کنار\s+[^،,.]+(?:هستم|ایستاده‌ام|ایستاده ام)",
-        r"از\s+[^،,.]+(?:حرکت می‌کنم|حرکت میکنم|راه می‌افتم|راه می‌افتم)",
-        r"مبدأ(?:\s+مسیر)?\s*[:：]?",
-    )
-
-    return any(
-        re.search(pattern, normalized)
-        for pattern in textual_patterns
-    )
-
-
-def _query_explicitly_requests_places_along_route(query: str) -> bool:
-    """Return True only for an explicit along-route place request."""
-
-    normalized = " ".join((query or "").split())
-
-    patterns = (
-        "در مسیر",
-        "در طول مسیر",
-        "نزدیک مسیر",
-        "در راه",
-        "در مسیر پیدا کن",
-        "در مسیر نشان بده",
-        "در مسیر پیدا",
-    )
-
-    return any(pattern in normalized for pattern in patterns)
-
-
-def _query_is_gps_origin_request(query: str) -> bool:
-    """Return True when the user explicitly refers to current GPS location."""
-
-    normalized = " ".join((query or "").split())
-
-    phrases = (
-        "از موقعیت فعلی من",
-        "از موقعیت من",
-        "از مکان فعلی من",
-        "از اینجا",
-        "نزدیک من",
-        "اطراف من",
-    )
-
-    return (
-        any(phrase in normalized for phrase in phrases)
-        and not _query_has_textual_origin(normalized)
-    )
-
-
-def _ignored_tool_result(message: str) -> dict:
-    """Result for a tool call that contradicts the detected query intent."""
-
-    return {
-        "success": False,
-        "operation": "ignored",
-        "message": message,
-        "places": [],
-        "routes": [],
-        "geojson": {
-            "type": "FeatureCollection",
-            "features": [],
-        },
-        "warnings": [],
-    }
-
+    return result
 
 def _extract_first_location(
     payload: dict,

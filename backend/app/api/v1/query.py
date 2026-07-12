@@ -5,7 +5,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.agents.dependencies import AgentDependencies
-from app.agents.map_agent import map_agent
+from app.agents.map_agent import (
+    map_agent,
+    search_places_along_route_for_dependencies,
+)
 from app.api.dependencies import (
     get_place_application_service,
     get_routing_application_service,
@@ -18,6 +21,65 @@ from app.services.routing_application import RoutingApplicationService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Mapathon Agent"])
+
+def _is_compound_route_search_query(query: str) -> bool:
+    """تشخیص درخواست هم‌زمان مسیریابی و جستجوی مکان."""
+
+    normalized = " ".join((query or "").split())
+
+    route_terms = (
+        "مسیریابی",
+        "مسیر",
+        "بروم",
+        "برو",
+        "برسان",
+        "حرکت کنم",
+        "راه",
+    )
+
+    place_terms = (
+        "داروخانه",
+        "رستوران",
+        "بیمارستان",
+        "پمپ بنزین",
+        "بانک",
+        "فروشگاه",
+        "سوپرمارکت",
+        "کافه",
+        "پارک",
+        "مترو",
+    )
+
+    return (
+        any(term in normalized for term in route_terms)
+        and any(term in normalized for term in place_terms)
+    )
+
+
+def _extract_compound_search_term(query: str) -> str | None:
+    """استخراج نوع مکان از درخواست ترکیبی."""
+
+    normalized = " ".join((query or "").split())
+
+    place_terms = (
+        "داروخانه",
+        "رستوران",
+        "بیمارستان",
+        "پمپ بنزین",
+        "بانک",
+        "فروشگاه",
+        "سوپرمارکت",
+        "کافه",
+        "پارک",
+        "مترو",
+    )
+
+    for term in place_terms:
+        if term in normalized:
+            return term
+
+    return None
+
 
 
 @router.post(
@@ -75,6 +137,10 @@ Context کاربر:
 - فقط وقتی از route_from_user_location استفاده کن که مبدأ متنی
   در پرسش وجود نداشته باشد و کاربر واقعاً به موقعیت موجود در
   context.user_location ارجاع داده باشد.
+- عبارت «به خیابان حسنی به یک داروخانه بروم» را به‌صورت درخواست
+  ترکیبی تفسیر کن: مقصد مسیر «خیابان حسنی» و عبارت جستجو
+  «داروخانه» است. ابتدا route و سپس search_places_along_route
+  را اجرا کن.
 - اگر شهر در پرسش مشخص شده است، آن را به آدرس‌های مبهم مقصد
   و مبدأ اضافه کن.
 - اگر اطلاعات لازم موجود نیست، clarification تولید کن.
@@ -106,6 +172,39 @@ Context کاربر:
         dependencies.tools_used,
         len(dependencies.tool_results),
     )
+
+    # اجرای قطعی بخش دوم درخواست‌های ترکیبی.
+    # مدل ممکن است پس از route، ابزار جستجو را فراخوانی نکند.
+    if _is_compound_route_search_query(payload.query):
+        search_term = _extract_compound_search_term(payload.query)
+
+        has_route = any(
+            tool_name in dependencies.tools_used
+            for tool_name in (
+                "route_between_places",
+                "route_between_coordinates",
+                "route_from_user_location",
+            )
+        )
+
+        already_searched = (
+            "search_places_along_route"
+            in dependencies.tools_used
+        )
+
+        if search_term and has_route and not already_searched:
+            logger.info(
+                "forcing_along_route_search term=%s",
+                search_term,
+            )
+
+            await search_places_along_route_for_dependencies(
+                deps=dependencies,
+                term=search_term,
+                radius_meters=500,
+                limit=10,
+            )
+
 
     if dependencies.tool_results:
         merged = merge_tool_results(
@@ -146,7 +245,30 @@ def merge_tool_results(
         result = tool_results[0].get("result")
 
         if isinstance(result, dict):
-            return result
+            normalized = dict(result)
+
+            places = normalized.get("places")
+            if isinstance(places, list):
+                normalized["places"] = [
+                    place
+                    for place in places
+                    if isinstance(place, dict)
+                    and place.get("category")
+                    not in {
+                        "geocoded_address",
+                        "route_origin",
+                        "route_destination",
+                    }
+                ]
+
+            metrics = normalized.get("metrics")
+            if not isinstance(metrics, dict):
+                metrics = {}
+
+            metrics["total_places"] = len(normalized["places"])
+            normalized["metrics"] = metrics
+
+            return normalized
 
     all_places: list[dict[str, Any]] = []
     all_routes: list[dict[str, Any]] = []
